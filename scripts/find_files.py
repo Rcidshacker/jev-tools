@@ -14,7 +14,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from jevlib import ask, score  # noqa: E402
+from jevlib import ask, score, sensitive_path  # noqa: E402
 
 SKIP = {".git", "node_modules", ".venv", "venv", "__pycache__", "dist", "build", ".next", "target", ".idea"}
 STOP = set("the and for with that this from into how what where which does about file files code find show all any are was you your get its why who when not".split())
@@ -40,6 +40,8 @@ def candidates(root, kws):
         dn[:] = [d for d in dn if d not in SKIP]
         for f in fn:
             p = Path(dp) / f
+            if sensitive_path(p):
+                continue
             try:
                 if p.stat().st_size > 300_000:
                     continue

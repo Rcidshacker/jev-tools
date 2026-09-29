@@ -13,7 +13,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from jevlib import ask, noul  # noqa: E402
+from jevlib import ask, noul, sensitive_path  # noqa: E402
 from rule_enforcer import MAX_DIFF, SKIP_EXT, THRESH, extract_rules, rule_files  # noqa: E402
 
 MIN_HUNKS = 5
@@ -25,7 +25,7 @@ def hunks(commits, limit):
     found = []
     for part in re.split(r"^diff --git ", out, flags=re.M)[1:]:
         name = part.split("\n", 1)[0].split(" b/")[-1]
-        if Path(name).suffix.lower() not in SKIP_EXT and len(part) > 80:
+        if Path(name).suffix.lower() not in SKIP_EXT and not sensitive_path(name) and len(part) > 80:
             found.append((name, part[:MAX_DIFF]))
     return found[:limit]
 

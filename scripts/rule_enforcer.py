@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from jevlib import ask, hook_in, log, mode, noul  # noqa: E402
+from jevlib import ask, hook_in, log, mode, noul, sensitive_path  # noqa: E402
 
 THRESH = float(os.environ.get("JEV_THRESHOLD", "0.80"))
 CONFIRM = float(os.environ.get("JEV_CONFIRM", "0.70"))
@@ -84,7 +84,7 @@ def main():
     if tool not in ("Edit", "Write", "MultiEdit") or not ti.get("file_path"):
         return
     path = Path(ti["file_path"])
-    if path.suffix.lower() in SKIP_EXT or ".claude" in path.parts:
+    if path.suffix.lower() in SKIP_EXT or ".claude" in path.parts or sensitive_path(path):
         return
     diff = diff_of(tool, ti)
     if len(diff.strip()) < 15:

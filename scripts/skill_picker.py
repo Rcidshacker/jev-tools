@@ -1,7 +1,8 @@
 """Use case 3: UserPromptSubmit hook. Jev picks the one installed skill that fits the prompt.
 
 The skill listing is still in Claude's context (a hook cannot remove it), so this is a
-pointer, not a token saver. Mode shadow (default) logs the pick without injecting it; active injects it.
+pointer, not a token saver. Opt-in (JEV_SKILL_PICKER=1 or the plugin's skill_picker option) because it sends every prompt to the API.
+Mode shadow (default) logs the pick without injecting it; active injects it.
 """
 import json
 import os
@@ -53,8 +54,9 @@ def shortlist(prompt, skills):
 
 
 def main():
-    if mode() == "off":
-        return
+    on = (os.environ.get("JEV_SKILL_PICKER") or os.environ.get("CLAUDE_PLUGIN_OPTION_SKILL_PICKER") or "").strip().lower()
+    if mode() == "off" or on not in ("1", "true", "yes", "on"):
+        return  # opt-in: it sends every prompt you type to the API
     ev = hook_in()
     prompt = (ev.get("prompt") or "").strip()
     if len(prompt) < 15 or prompt.startswith("/"):

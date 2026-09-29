@@ -17,6 +17,30 @@ It talks to **OpenJev** on [Codiv](https://codiv.ai), a hosted "System One" mode
 | `browser-nav` | skill | Jev picks each next click from the page's interactive elements; Claude executes and judges pass/fail |
 | `review-precheck` | skill | Seven yes/no policy questions on a git diff decide *fast pass* vs *full review* |
 | `rule-calibrate` | skill | Replays recent commits against your rules and reports which rules are decisive, noisy, weak or quiet, before you enforce anything |
+| `status` | skill | Shows whether the install is alive: key found, mode, hook state, recent log events and errors |
+
+## Privacy: what leaves your machine
+
+This plugin sends text to a third-party API (`api.codiv.ai`). Read this before enabling it on any project.
+
+| Piece | What is sent |
+|---|---|
+| Rule hook (every `Edit`/`Write`) | the file name, the unified diff (up to 8000 characters) and the text of your project rules |
+| Skill hook (**opt-in**, every prompt) | your prompt, and the names and descriptions of your installed skills |
+| `find-files` | the query and short excerpts of candidate files |
+| `review-precheck` / `rule-calibrate` | the git diff (up to 30k characters) / recent commit hunks |
+| `browser-nav` | the goal, the URL and the names of the page's interactive elements |
+
+- **Shadow mode still sends.** The hook needs the model's answer to log it; only `mode: off` sends nothing.
+- **A local seatbelt runs first.** Before sending, these are replaced with `[REDACTED]`: private-key blocks, vendor-style keys (`sk-`/`sk_live_`, AWS, Google, GitHub, Slack, npm), JWTs, `Bearer` tokens, credentials inside connection strings (`postgres://user:pass@host`), assignments to names containing password/secret/token/api key (quoted or not), and long hex or base64-looking strings. Files named like secrets (`.env*`, `*.pem`, `*.key`, `id_rsa*`, `credentials*`, `secrets*`, ...) are never read into a request. It is a pattern match: a bare token in an unusual shape, **names, emails, customer or employee records, and internal business data are not caught**, and about 0.2% of ordinary code lines that mention `token`/`secret` get partly redacted (which slightly weakens the verdict). Treat it as risk reduction, not a guarantee.
+- **Retention is unknown to us.** Codiv's public API docs say nothing about how request data is stored or used. Check their terms before sending anything you would not paste into a public forum.
+- **Nothing sensitive is stored locally.** The decision log holds verdicts, probabilities, latency and token counts, never file contents and never the key.
+
+Turn it off for one project (regulated, customer, employee, or client data) by adding this to that project's `.claude/settings.local.json`:
+
+```json
+{ "env": { "JEV_MODE": "off" } }
+```
 
 ## Install
 
@@ -39,7 +63,7 @@ Either of these, never both in a repo:
 
 Do not put the key in `settings.json`, `CLAUDE.md`, or any file in a repo. The client only ever sends it to `api.codiv.ai` (or loopback for tests), refuses redirects, and never logs it.
 
-Check the wiring with one live call: `python scripts/jevlib.py` prints `OK`.
+Check the wiring: run the `status` skill (or `python scripts/status.py`). Hooks fail open, so a missing key or a wrong `python` looks exactly like a working install until you look at the log. `python scripts/jevlib.py` makes one live call and prints `OK`.
 
 ## Modes
 
@@ -48,7 +72,7 @@ Set with the plugin's `mode` option or the `JEV_MODE` environment variable (the 
 | Mode | Rule hook | Skill hook |
 |---|---|---|
 | `shadow` (default) | logs the verdict, never blocks | logs the pick, injects nothing |
-| `active` | blocks an edit Jev flags at ≥ 0.80 **and** confirms at ≥ 0.70 | injects `Jev skill pick: <name>` |
+| `active` | blocks an edit Jev flags at ≥ 0.80 **and** confirms at ≥ 0.70 | injects `Jev skill pick: <name>` (if the hook is enabled) |
 | `off` | does nothing, makes no API call | does nothing |
 
 Recommended path: run in `shadow` for a week, read the log, run the `rule-calibrate` skill on a project, then switch that setup to `active`.
@@ -60,6 +84,7 @@ Recommended path: run in `shadow` for a week, read the log, run the `rule-calibr
 | `OPENJEV_API_KEY` | none | API key (also `TYPESAFE_API_KEY`, or the plugin's `api_key` option) |
 | `OPENJEV_BASE_URL` | `https://api.codiv.ai` | Must be `api.codiv.ai` or loopback |
 | `JEV_MODE` | `shadow` | `shadow`, `active` or `off` |
+| `JEV_SKILL_PICKER` | off | `1` enables the skill hook (also the plugin's `skill_picker` option) |
 | `JEV_THRESHOLD` | `0.80` | Rule-violation probability that can block |
 | `JEV_CONFIRM` | `0.70` | Second-look probability required to block |
 | `JEV_SKILL_MIN` | `0.60` | Minimum probability to inject a skill pick |

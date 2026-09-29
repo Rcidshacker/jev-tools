@@ -56,6 +56,7 @@ def setUpModule():
                       JEV_LOG=str(TMP / "log.jsonl"), HOME=str(TMP / "home"), USERPROFILE=str(TMP / "home"),
                       PYTHONIOENCODING="utf-8")
     os.environ["JEV_MODE"] = "active"
+    os.environ["JEV_SKILL_PICKER"] = "1"
 
 
 def run(script, *args, stdin="", cwd=None, **env):
@@ -85,6 +86,61 @@ class Client(unittest.TestCase):
         finally:
             os.environ["OPENJEV_BASE_URL"] = old
         self.assertEqual(Mock.calls, [])
+
+
+class Privacy(unittest.TestCase):
+    def test_secrets_are_redacted_before_sending(self):
+        import jevlib
+        reset(lambda b: {"q": noul_a(0.1)})
+        jevlib.ask('key = "sk-abcdefghijklmnopqrstuvwxyz" and password = "hunter2hunter2"', {"q": jevlib.noul("x")})
+        sent = json.dumps(Mock.calls[-1])
+        self.assertNotIn("sk-abcdefghijklmnopqrstuvwxyz", sent)
+        self.assertNotIn("hunter2hunter2", sent)
+        self.assertIn("[REDACTED]", sent)
+
+    def test_common_secret_shapes_are_redacted_and_ordinary_code_survives(self):
+        import jevlib
+        leaks = {  # every value below is fabricated; split literals keep GitHub push protection from mistaking them for real keys
+            "use sk_" "live_4eC39HqLyjWDarjtT1zdp7dc now": "4eC39HqLyjWDarjtT1zdp7dc",
+            "DATABASE_URL=postgres://admin:S3cretPassw0rd@db.internal:5432/app": "S3cretPassw0rd",
+            "mongodb+srv://user:hunter2hunter2@cluster0.abc.mongodb.net/test": "hunter2hunter2",
+            "API_KEY=abcd1234efgh5678ijkl9012": "abcd1234efgh5678ijkl9012",
+            "CLIENT_SECRET=Zm9vYmFyYmF6cXV4MTIzNDU2": "Zm9vYmFyYmF6cXV4MTIzNDU2",
+            "Authorization: Bearer abcDEF123456ghiJKL789012mnoPQR": "abcDEF123456ghiJKL789012mnoPQR",
+            "key=AIza" "SyA1B2C3D4E5F6G7H8I9J0K1L2M3N4O5P6Q": "AIzaSyA1B2C3D4E5F6G7H8I9J0K1L2M3N4O5P6Q",
+            "aws_secret_access_key = " "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+            "here is the token 9f8e7d6c5b4a39281706f5e4d3c2b1a098765432 ok": "9f8e7d6c5b4a39281706f5e4d3c2b1a098765432",
+            "//registry.npmjs.org/:_authToken=npm" "_abcdefghijklmnopqrstuvwxyz0123456789": "npm_abcdefghijklmnopqrstuvwxyz0123456789",
+            "OPENJEV_API_KEY=sk-" "codiv-AbCdEfGhIjKlMnOpQrStUvWxYz012345": "AbCdEfGhIjKlMnOpQrStUvWxYz012345",
+            "https://hooks.slack.com/" "services/T01234567/B01234567/abcdefghijklmnopqrstuvwx": "abcdefghijklmnopqrstuvwx",
+            '{"db_password": "correct-horse-battery"}': "correct-horse-battery",
+        }
+        for text, secret in leaks.items():
+            self.assertNotIn(secret, jevlib.scrub(text), text)
+        for code in ("def total(items): return sum(i.price for i in items)", "class AuthTokenRefresher: pass",
+                     "const url = config.apiHost + '/users'; // token refresh handled elsewhere", "max_tokens = 256"):
+            self.assertEqual(jevlib.scrub(code), code)
+
+    def test_sensitive_paths_and_normal_code(self):
+        import jevlib
+        for p in (r"C:\proj\.env", "/a/.env.local", "~/.ssh/id_rsa", "certs/server.pem", "config/credentials.json"):
+            self.assertTrue(jevlib.sensitive_path(p), p)
+        for p in (r"C:\proj\srcpp.py", "src/environment.ts", "docs/keyboard.md"):
+            self.assertFalse(jevlib.sensitive_path(p), p)
+
+    def test_missing_key_is_logged_not_silent(self):
+        import jevlib
+        keys = {k: os.environ.pop(k) for k in ("OPENJEV_API_KEY", "TYPESAFE_API_KEY") if k in os.environ}
+        try:
+            self.assertIsNone(jevlib.ask("s", {"q": jevlib.noul("x")}))
+        finally:
+            os.environ.update(keys)
+        self.assertIn('"no_key"', Path(os.environ["JEV_LOG"]).read_text(encoding="utf-8"))
+
+    def test_status_reports_key_and_mode(self):
+        r = run("status.py")
+        self.assertIn("api key     found via OPENJEV_API_KEY", r.stdout)
+        self.assertIn("mode        active", r.stdout)
 
 
 class RuleEnforcer(unittest.TestCase):
@@ -122,6 +178,11 @@ class RuleEnforcer(unittest.TestCase):
         self.assertEqual(run("rule_enforcer.py", stdin=self.event("x(1)")).stdout, "")
         reset(lambda b: 1 / 0)
         self.assertEqual(run("rule_enforcer.py", stdin=self.event("console.log(x())")).stdout, "")
+
+    def test_secret_named_files_are_never_sent(self):
+        reset(self.judge)
+        self.assertEqual(run("rule_enforcer.py", stdin=self.event("console.log(x())", path=".env")).stdout, "")
+        self.assertEqual(Mock.calls, [])
 
     def test_off_mode_makes_no_call(self):
         reset(self.judge)
@@ -246,6 +307,12 @@ class SkillPicker(unittest.TestCase):
     def picker(pick="pdf-tool", p=0.9, needed=0.9, right=0.9):
         return lambda b: ({"skill": choice_a(pick, p)} if "skill" in b["questions"]
                           else {"needed": noul_a(needed), "right": noul_a(right)})
+
+    def test_opt_in_only(self):
+        reset(self.picker())
+        self.assertEqual(run("skill_picker.py", stdin=self.prompt("please merge these two pdf files into one"),
+                             JEV_SKILL_PICKER="0").stdout, "")
+        self.assertEqual(Mock.calls, [])  # not opted in: the prompt is never sent
 
     def test_stage_two_can_veto(self):
         reset(self.picker(right=0.2))
