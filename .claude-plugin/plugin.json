@@ -1,0 +1,27 @@
+{
+  "name": "jev-tools",
+  "description": "Small typed decisions from OpenJev (Codiv System One) for Claude Code: a rule-enforcing edit hook, a skill-pick hook, and skills for file discovery, browser navigation, review pre-checks and rule calibration. Ships in shadow mode: hooks log what they would do and never block or inject until you switch to active.",
+  "version": "0.1.0",
+  "author": { "name": "Rcidshacker", "url": "https://github.com/Rcidshacker" },
+  "homepage": "https://github.com/Rcidshacker/jev-tools",
+  "repository": "https://github.com/Rcidshacker/jev-tools",
+  "license": "MIT",
+  "keywords": ["claude-code", "hooks", "skills", "openjev", "codiv", "system-one", "rules"],
+  "userConfig": {
+    "api_key": {
+      "type": "string",
+      "title": "OpenJev (Codiv) API key",
+      "description": "Key for api.codiv.ai (starts with sk-codiv-). Optional here: the OPENJEV_API_KEY environment variable also works and takes precedence. With no key anywhere every hook does nothing.",
+      "sensitive": true,
+      "required": false
+    },
+    "mode": {
+      "type": "string",
+      "title": "Mode",
+      "description": "shadow (default): hooks only log to the decision log. active: the rule hook blocks edits Jev confirms break a project rule, and the skill hook injects its pick. off: hooks do nothing. The JEV_MODE environment variable overrides this.",
+      "options": ["shadow", "active", "off"],
+      "default": "shadow",
+      "required": false
+    }
+  }
+}

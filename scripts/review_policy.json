@@ -1,0 +1,9 @@
+{
+  "secrets": "The diff adds a hardcoded secret, API key, password or token",
+  "dependencies": "The diff adds or upgrades a third-party dependency",
+  "auth": "The diff changes authentication, authorization or permission checks",
+  "schema": "The diff changes a public API contract, database schema or migration",
+  "tests": "The diff deletes, skips or weakens tests, or adds logic with no test",
+  "errors": "The diff swallows errors, adds a bare except, or hides failures",
+  "risk": "The diff makes a large or risky logic change that a careful reviewer should read line by line"
+}

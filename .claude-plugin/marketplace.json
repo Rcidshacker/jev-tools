@@ -1,0 +1,12 @@
+{
+  "name": "jev-tools",
+  "owner": { "name": "Rcidshacker", "url": "https://github.com/Rcidshacker" },
+  "description": "Single-plugin marketplace carrying jev-tools from this same repository.",
+  "plugins": [
+    {
+      "name": "jev-tools",
+      "source": "./",
+      "description": "OpenJev-backed rule enforcement, skill picking, file discovery, browser navigation and review pre-checks for Claude Code."
+    }
+  ]
+}

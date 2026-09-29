@@ -1,0 +1,59 @@
+"""Use case 5: review pre-check. Seven yes/no policy questions on a git diff decide fast vs full review.
+
+    python review_precheck.py [git-diff-args, default HEAD]
+Prints JSON {route, flags}. Exit 0 = fast (nothing flagged), 10 = full review needed.
+Fails safe: Jev down, missing answers or a truncated diff all route to full review.
+Edit review_policy.json to change the questions. JEV_PRECHECK_MIN (default 0.25) is the yes-probability that flags.
+"""
+import json
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from jevlib import ask, log, noul  # noqa: E402
+
+POLICY = Path(__file__).with_name("review_policy.json")
+MIN_P = float(os.environ.get("JEV_PRECHECK_MIN", "0.25"))
+MAX_DIFF = 30000
+DOCS = (".md", ".txt", ".rst")
+
+
+def route(answers, policy, truncated=False):
+    if not answers:
+        return "full", ["Jev unavailable"]
+    flags = []
+    for qid, text in policy.items():
+        p = answers.get(qid, {}).get("noul", 1.0)  # a missing answer counts as flagged
+        if p >= MIN_P:
+            flags.append(f"{qid} ({p:.2f}): {text}")
+    if truncated:
+        flags.append("diff truncated")
+    return ("full" if flags else "fast"), flags
+
+
+def main():
+    r = subprocess.run(["git", "diff", *(sys.argv[1:] or ["HEAD"])], capture_output=True, text=True,
+                       encoding="utf-8", errors="replace")
+    if r.returncode:
+        sys.exit(r.stderr.strip() or "git diff failed")
+    if not r.stdout.strip():
+        print(json.dumps({"route": "fast", "flags": [], "note": "empty diff"}))
+        return 0
+    files = re.findall(r"^diff --git a/.* b/(.*)$", r.stdout, re.M)
+    if files and all(f.lower().endswith(DOCS) for f in files):
+        print(json.dumps({"route": "fast", "flags": [], "note": "docs only"}))
+        return 0
+    policy = json.loads(POLICY.read_text(encoding="utf-8"))
+    diff = r.stdout[:MAX_DIFF]
+    answers = ask(diff, {qid: noul(text) for qid, text in policy.items()}, timeout=20)
+    decision, flags = route(answers, policy, truncated=len(r.stdout) > MAX_DIFF)
+    log("precheck", route=decision, flags=len(flags))
+    print(json.dumps({"route": decision, "flags": flags}, indent=2))
+    return 0 if decision == "fast" else 10
+
+
+if __name__ == "__main__":
+    sys.exit(main())
