@@ -7,6 +7,8 @@ It talks to **OpenJev** on [Codiv](https://codiv.ai), a hosted "System One" mode
 > **Status: early, shadow-first.** Everything here was built and tested against a live Codiv key, and the numbers are in [docs/MEASUREMENTS.md](docs/MEASUREMENTS.md), but the samples are small and OpenJev is a young model. The plugin ships in **shadow mode**: hooks only log what they would have done. Nothing blocks or injects until you switch to `active`.
 > Independent project. Not affiliated with Codiv, OpenJev or TypeSafe AI.
 
+Write-up with the numbers, failures and privacy notes: [I built a Claude Code plugin around a model that only answers yes/no](https://dev.to/rcids/i-built-a-claude-code-plugin-around-a-model-that-only-answers-yesno-what-worked-what-failed-1ecj). Feedback welcome in [issue #1](https://github.com/Rcidshacker/jev-tools/issues/1).
+
 ## What's in it
 
 | Piece | Kind | What it does |
