@@ -1,6 +1,6 @@
 """jev-tools installer: one command to install the Claude Code plugin and choose how Jev runs. Stdlib only.
 
-    uv tool install git+https://github.com/Rcidshacker/jev-tools     once (or: pipx install ...)
+    uv tool install jev-tools-setup     once (or: pipx install jev-tools-setup; no install: uvx jev-tools-setup)
 
     jev-tools-setup check        read-only: is this machine ready? (python, claude CLI, git, network, GPU, docker)
     jev-tools-setup              install the plugin and pick api / local / offline

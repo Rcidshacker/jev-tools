@@ -7,6 +7,7 @@
 A [Claude Code](https://code.claude.com) plugin for the terminal and the desktop app.
 Does this edit break a project rule? Which skill fits this prompt? Which file matters? Does this diff need a careful review?
 
+[![PyPI](https://img.shields.io/pypi/v/jev-tools-setup?label=jev-tools-setup)](https://pypi.org/project/jev-tools-setup/)
 ![License MIT](https://img.shields.io/badge/license-MIT-green)
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)
 ![stdlib only](https://img.shields.io/badge/dependencies-none-lightgrey)
@@ -33,7 +34,7 @@ Write-up with the numbers, failures and privacy notes: [I built a Claude Code pl
 
 ```bash
 # 1. install the setup tool (once)
-uv tool install git+https://github.com/Rcidshacker/jev-tools      # or: pipx install git+https://github.com/Rcidshacker/jev-tools
+uv tool install jev-tools-setup          # or: pipx install jev-tools-setup
 
 # 2. optional, read-only: is this machine ready?
 jev-tools-setup check
@@ -43,6 +44,8 @@ jev-tools-setup
 ```
 
 Setup installs the skills, scripts and hooks through Claude Code (so **terminal and desktop share one install**), asks which backend you want, validates it, and finishes by writing `~/.jev-tools/LOG.md`. **Restart Claude Code**, then run the `status` skill to confirm everything is wired.
+
+> Prefer a one-shot run without installing anything? `uvx jev-tools-setup check` and `uvx jev-tools-setup` work too. To run the latest unreleased code straight from GitHub, use `uvx --from git+https://github.com/Rcidshacker/jev-tools jev-tools-setup`.
 
 <details>
 <summary><b>No uv or pipx? Install the plugin by hand</b></summary>
@@ -295,6 +298,7 @@ pyproject.toml                   packages the installer as jev-tools-setup
 python tests/test_all.py          # offline suite, no network, no key needed
 python scripts/jevlib.py          # one live call, needs OPENJEV_API_KEY
 uv build                          # builds the jev-tools-setup wheel and sdist
+# releases: publishing a GitHub release runs .github/workflows/publish.yml (PyPI trusted publishing, no token)
 ```
 
 The tests spin up a local server that mimics `/v1/systemone`, so they prove the logic and the wire format, not OpenJev's accuracy. Accuracy claims come only from the live runs recorded in the docs. See the [CHANGELOG](https://github.com/Rcidshacker/jev-tools/blob/main/CHANGELOG.md) for what changed in each version.
