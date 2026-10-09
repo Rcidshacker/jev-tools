@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.1
 
 - Measured the small local models for real (installer run end to end with the PyPI package; Verdict and Laya servers on CPU) and acted on it: `jevlib.TRUSTED` limits each small model to what it proved able to judge. Verdict is only asked for skill picking; Laya for skill picking and `browser-nav`. The rule hook, `review-precheck`, `find-files` (and Verdict's `browser-nav`) use the pattern fallbacks instead. Details and numbers in the README.
 - Local servers get one client request at a time: parallel requests queued behind a CPU-bound server and caused mass timeouts.
