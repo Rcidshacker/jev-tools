@@ -327,7 +327,7 @@ class Trust(unittest.TestCase):
         self.assertEqual([self.jl.no_model(f) for f in feats], [False, True, True, True, True])
         self.assertEqual((self.jl.workers(), self.jl.workers(4)), (1, 1))  # one thread against a local server
         self.use("laya-1.0")
-        self.assertEqual([self.jl.no_model(f) for f in feats], [False, False, True, True, True])
+        self.assertEqual([self.jl.no_model(f) for f in feats], [True, False, True, True, True])
         self.use("openjev-latest")
         self.assertEqual([self.jl.no_model(f) for f in feats], [False] * 5)
         self.use("x", backend="offline")
@@ -357,6 +357,27 @@ class Trust(unittest.TestCase):
         els = [{"ref": "ref_1", "role": "link", "name": "Home"}, {"ref": "ref_2", "role": "button", "name": "Settings"}]
         out = json.loads(run("pick_next.py", stdin=json.dumps({"goal": "open the settings", "elements": els})).stdout)
         self.assertEqual((out["action"], out["ref"]), ("unsure", "ref_2"))
+        self.assertEqual(Mock.calls, [])
+
+    def test_secret_rule_without_a_literal_token_is_caught_by_shape(self):
+        self.use("verdict-1.4")
+        reset(lambda b: {})
+        (self.proj / "CLAUDE.md").write_text("# Rules\n- Never commit secrets or API keys\n")
+        ti = {"file_path": str(self.proj / "src/a.js"), "old_string": "const a = 1", "new_string": "const apiKey = 'sk-live-9f8e7d6c5b4a'; const a = 1"}
+        out = json.loads(run("rule_enforcer.py", stdin=json.dumps({"tool_name": "Edit", "tool_input": ti, "cwd": str(self.proj)}), JEV_MODE="active").stdout)
+        self.assertEqual(out["hookSpecificOutput"]["permissionDecision"], "deny")
+        ti["new_string"] = "const sum = 1"
+        self.assertEqual(run("rule_enforcer.py", stdin=json.dumps({"tool_name": "Edit", "tool_input": ti, "cwd": str(self.proj)}), JEV_MODE="active").stdout.strip(), "")
+        self.assertEqual(Mock.calls, [])
+
+    def test_laya_skill_hook_uses_keywords_and_makes_no_call(self):
+        self.use("laya-1.0")
+        d = self.proj / ".claude" / "skills" / "pdf-tool"
+        d.mkdir(parents=True)
+        (d / "SKILL.md").write_text("---\nname: pdf-tool\ndescription: Merge, split and rotate PDF files\n---\nbody\n")
+        reset(lambda b: {})
+        out = run("skill_picker.py", stdin=json.dumps({"prompt": "please merge these two pdf files into one", "cwd": str(self.proj)}), JEV_MODE="active", JEV_SKILL_PICKER="1")
+        self.assertIn("pdf-tool", out.stdout)
         self.assertEqual(Mock.calls, [])
 
     def test_laya_still_drives_browser_nav_with_the_model(self):

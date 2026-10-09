@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from jevlib import ask, hook_in, log, mode, no_model, noul, sensitive_path  # noqa: E402
+from jevlib import SECRET, ask, hook_in, log, mode, no_model, noul, sensitive_path  # noqa: E402
 
 THRESH = float(os.environ.get("JEV_THRESHOLD", "0.80"))
 CONFIRM = float(os.environ.get("JEV_CONFIRM", "0.70"))
@@ -53,6 +53,9 @@ def extract_rules(files):
 FORBID = re.compile(r"\b(?:never|do not|don't|must not|avoid|no)\s+(?:(?:use|using|call|commit|add|import)\s+)?(`[^`]+`|[\w.]+\(?\)?)", re.I)
 
 
+SECRETY = re.compile(r"secret|api[ _-]?key|credential|password|token", re.I)
+
+
 def literal_tokens(rule):
     """Code tokens a "never/don't/avoid X" rule forbids: a backticked span, or a bare token that looks like code (has . _ or paren)."""
     out = []
@@ -66,7 +69,10 @@ def literal_tokens(rule):
 def offline_hits(rules, diff):
     """No model: (token, rule, source file) for every forbidden literal that an ADDED line contains. Far narrower than a model's judgment."""
     added = [l[1:] for l in diff.splitlines() if l.startswith("+") and not l.startswith("+++")]
-    return [(t, text, src) for text, src in rules for t in literal_tokens(text) if any(t in l for l in added)]
+    hits = [(t, text, src) for text, src in rules for t in literal_tokens(text) if any(t in l for l in added)]
+    if any(SECRET.search(l) for l in added):  # "never commit secrets" has no literal token, so match secret shapes
+        hits += [("a secret-shaped value", text, src) for text, src in rules if SECRETY.search(text)]
+    return hits
 
 
 def diff_of(tool, ti):

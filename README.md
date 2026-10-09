@@ -102,7 +102,7 @@ jev-tools-setup serve        # add --device cpu to force the CPU
 | | Asks the model | Uses pattern fallbacks |
 |---|---|---|
 | **Verdict** | skill hook | rule hook, `review-precheck`, `find-files`, `browser-nav` |
-| **Laya** | skill hook, `browser-nav` | rule hook, `review-precheck`, `find-files` |
+| **Laya** | `browser-nav` | skill hook (keywords), rule hook, `review-precheck`, `find-files` |
 
 > [!NOTE]
 > The small-model install was run for real on Windows (the PyPI package, CPU-only PyTorch, weights from the Hugging Face cache). The numbers below are small samples on one machine; thresholds are still the ones tuned on the full model.
@@ -289,14 +289,14 @@ Run against live local servers installed by `jev-tools-setup`, with the real scr
 | Task | Verdict 151M | Laya 421M |
 |---|---|---|
 | Plain topical choice (invoice / ticket / incident / other) | 4 of 4 | 4 of 4 |
-| Skill picking (3 cases) | **3 of 3** through the model | picks were right, but their scores sat under the 0.6 bar tuned on OpenJev (0.47; the second was vetoed), so nothing is injected |
+| Skill picking (3 cases) | **3 of 3** through the model | picks were right, but their scores sat under the 0.6 bar tuned on OpenJev (0.47; the second was vetoed), so nothing was injected; the plugin now uses its keyword pick for Laya |
 | `browser-nav` (2 steps) | 1 of 2 right, both under the confidence floor | **2 of 2** at 0.88 and 0.94 |
 | Rule check, violation vs clean edit (6 cases) | scores flat near 0.65 for everything: mean gap about 0, 3 of 6 at chance | violations scored 0.39 to 0.55 vs 0.16 to 0.29 clean: a gap, but under the 0.8 block line |
 | `review-precheck` | flagged all 7 policy questions even on a rename | flagged 3 of 7 on a rename, 7 of 7 on the risky diff |
 | `find-files` (8 labelled queries, top 3) | 0 of 8, about 7 s per query | 0 of 8, about 56 s per query |
 | Latency, 16 questions | about 0.55 s | about 1.5 s |
 
-Plain keyword counting got 2 of 8 on the same queries, which is why the plugin does not ask either model to rank files. With the pattern fallbacks, on the same cases: the rule hook blocked the planted `console.log` edit and allowed all clean edits (it cannot catch a rule with no literal token, such as "never commit secrets"), and `review-precheck` called the benign rename *fast* and the risky diff *full* with the right flags.
+Plain keyword counting got 2 of 8 on the same queries, which is why the plugin does not ask either model to rank files. With the pattern fallbacks, on the same cases: the rule hook blocked the planted `console.log` edit and allowed all clean edits (a rule such as "never commit secrets" is matched by secret shape; rules with neither a literal token nor a secret topic are not caught), and `review-precheck` called the benign rename *fast* and the risky diff *full* with the right flags.
 
 Takeaways: both models classify topics well; neither is a drop-in for the full model on code judgments; Laya is the better of the two but slower on CPU; run `rule-calibrate` before trusting any rule verdict from a small model.
 

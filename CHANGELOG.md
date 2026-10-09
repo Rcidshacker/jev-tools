@@ -5,6 +5,8 @@
 - Measured the small local models for real (installer run end to end with the PyPI package; Verdict and Laya servers on CPU) and acted on it: `jevlib.TRUSTED` limits each small model to what it proved able to judge. Verdict is only asked for skill picking; Laya for skill picking and `browser-nav`. The rule hook, `review-precheck`, `find-files` (and Verdict's `browser-nav`) use the pattern fallbacks instead. Details and numbers in the README.
 - Local servers get one client request at a time: parallel requests queued behind a CPU-bound server and caused mass timeouts.
 - Fixed: `jev-tools-setup check` reported "HTTP 400" for a healthy Verdict/Laya server because its probe always asked for `openjev-latest`; it now probes with the configured model.
+- Laya's skill hook now uses the keyword pick: its correct picks scored 0.47, under the 0.6 bar tuned on OpenJev, so nothing was ever injected.
+- The no-model rule hook also blocks secret-shaped values in the added code when a rule is about secrets, keys, credentials, passwords or tokens ("never commit secrets" has no literal token to match).
 - Removed the now-unused small-model sizing code from `find-files` and `review-precheck`.
 
 ## 0.3.0

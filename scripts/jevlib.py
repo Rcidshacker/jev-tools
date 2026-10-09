@@ -23,9 +23,9 @@ LIMITS = {"verdict-1.4": (512, 24), "laya-1.0": (1024, 20)}
 # What each small model is trusted to judge, from live CPU runs on this project's own tasks (README has the table). Features:
 # skills, nav = choice questions; rules, precheck = yes/no on diffs; files = relevance scores. Models not listed are trusted for all.
 #   verdict-1.4: yes/no and scores did not separate violations from clean edits (gap about 0); skill picks 3/3.
-#   laya-1.0: browser-nav 2/2 and skill picks right, but rule scores stay under the 0.8 block line (0.39 and 0.48 on real
+#   laya-1.0: browser-nav 2/2; skill picks were right but scored 0.47, under the 0.6 bar tuned on OpenJev, so it injected nothing (keywords do). Rule scores stay under the 0.8 block line (0.39 and 0.48 on real
 #   violations), benign diffs get over-flagged, and find-files scored 0/8 vs 2/8 for keywords at 56 s per query.
-TRUSTED = {"verdict-1.4": {"skills"}, "laya-1.0": {"skills", "nav"}}
+TRUSTED = {"verdict-1.4": {"skills"}, "laya-1.0": {"nav"}}
 CHARS_PER_TOKEN = 3  # ponytail: rough and on the safe side for code/JSON; use the model's tokenizer if edge cases matter
 LOOPBACK = ("localhost", "127.0.0.1", "::1")
 
