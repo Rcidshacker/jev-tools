@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from jevlib import ask, choice, hook_in, log, mode, noul  # noqa: E402
+from jevlib import ask, backend, choice, hook_in, log, mode, noul  # noqa: E402
 
 MIN_P = float(os.environ.get("JEV_SKILL_MIN", "0.6"))
 TOP = 40  # the shortlist sent to Jev; a choice question allows 255 but the prompt is cheaper when small
@@ -42,7 +42,7 @@ def roster(cwd):
     return skills
 
 
-def shortlist(prompt, skills):
+def ranked(prompt, skills):
     q = set(WORD.findall(prompt.lower()))
     scored = []
     for n, d in skills.items():
@@ -50,7 +50,19 @@ def shortlist(prompt, skills):
         if s:
             scored.append((s, n, d))
     scored.sort(reverse=True)
-    return {n: d for _, n, d in scored[:TOP]}
+    return scored
+
+
+def shortlist(prompt, skills):
+    return {n: d for _, n, d in ranked(prompt, skills)[:TOP]}
+
+
+KW_MIN = 3  # keyword pick bar: one name word, or three description words, and strictly ahead of the runner-up
+
+
+def keyword_pick(prompt, skills):
+    r = ranked(prompt, skills)
+    return r[0][1] if r and r[0][0] >= KW_MIN and (len(r) == 1 or r[0][0] > r[1][0]) else None
 
 
 def main():
@@ -61,7 +73,17 @@ def main():
     prompt = (ev.get("prompt") or "").strip()
     if len(prompt) < 15 or prompt.startswith("/"):
         return
-    short = shortlist(prompt, roster(ev.get("cwd") or "."))
+    skills = roster(ev.get("cwd") or ".")
+    if backend() == "offline":
+        ask({}, {})  # logs the skip, so `status` can see the hook ran
+        pick = keyword_pick(prompt, skills)
+        shadow = mode() != "active"
+        log("skill_pick", pick=pick or "none", offline=True, shadow=shadow)
+        if pick and not shadow:
+            note = f"Keyword skill pick (no model): `{pick}`. Load it with the Skill tool if it fits."
+            print(json.dumps({"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": note}}))
+        return
+    short = shortlist(prompt, skills)
     if not short:
         return
     options = {**short, "none": "No listed skill clearly applies to this request"}

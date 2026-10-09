@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from jevlib import ask, hook_in, log, mode, noul, sensitive_path  # noqa: E402
+from jevlib import ask, backend, hook_in, log, mode, noul, sensitive_path  # noqa: E402
 
 THRESH = float(os.environ.get("JEV_THRESHOLD", "0.80"))
 CONFIRM = float(os.environ.get("JEV_CONFIRM", "0.70"))
@@ -50,6 +50,25 @@ def extract_rules(files):
     return out[:MAX_RULES]
 
 
+FORBID = re.compile(r"\b(?:never|do not|don't|must not|avoid|no)\s+(?:(?:use|using|call|commit|add|import)\s+)?(`[^`]+`|[\w.]+\(?\)?)", re.I)
+
+
+def literal_tokens(rule):
+    """Code tokens a "never/don't/avoid X" rule forbids: a backticked span, or a bare token that looks like code (has . _ or paren)."""
+    out = []
+    for m in FORBID.finditer(rule):
+        t = m.group(1).strip("`")
+        if len(t) >= 3 and (m.group(1).startswith("`") or re.search(r"[._(]", t)):
+            out.append(t)
+    return out
+
+
+def offline_hits(rules, diff):
+    """No model: (token, rule, source file) for every forbidden literal that an ADDED line contains. Far narrower than a model's judgment."""
+    added = [l[1:] for l in diff.splitlines() if l.startswith("+") and not l.startswith("+++")]
+    return [(t, text, src) for text, src in rules for t in literal_tokens(text) if any(t in l for l in added)]
+
+
 def diff_of(tool, ti):
     path = ti["file_path"]
     if tool == "Write":
@@ -62,8 +81,9 @@ def diff_of(tool, ti):
         pairs = [(e.get("old_string", ""), e.get("new_string", "")) for e in ti.get("edits", [])]
     else:
         pairs = [(ti.get("old_string", ""), ti.get("new_string", ""))]
+    nl = lambda t: t if not t or t.endswith("\n") else t + "\n"  # Edit strings lack a final newline, which glues the -/+ lines together
     return "".join(
-        "".join(difflib.unified_diff(o.splitlines(True), n.splitlines(True), "before", "after")) for o, n in pairs
+        "".join(difflib.unified_diff(nl(o).splitlines(True), nl(n).splitlines(True), "before", "after")) for o, n in pairs
     )
 
 
@@ -91,6 +111,16 @@ def main():
         return
     rules = extract_rules(rule_files(path, Path(ev.get("cwd") or ".")))
     if not rules:
+        return
+    if backend() == "offline":
+        ask({}, {})  # logs the skip, so `status` can see the hook ran
+        hits = offline_hits(rules, diff)
+        log("rule_check", file=path.name, rules=len(rules), offline=True, hits=len(hits), rule=hits[0][1][:80] if hits else "", enforce=ENFORCE)
+        if hits and ENFORCE:
+            t, text, src = hits[0]
+            reason = f"Literal match, no model: the added code contains `{t}`, which a rule in {src} forbids: \"{text}\". Revise the edit."
+            print(json.dumps({"hookSpecificOutput": {
+                "hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": reason}}))
         return
     state = f"File: {path.name}\n\n{diff[:MAX_DIFF]}"
     questions = {f"r{i}": noul(f"This change violates the rule: {t}") for i, (t, _) in enumerate(rules)}

@@ -1,7 +1,7 @@
 {
   "name": "jev-tools",
-  "description": "Small typed decisions from OpenJev (Codiv System One) for Claude Code: a rule-enforcing edit hook, an opt-in skill-pick hook, and skills for file discovery, browser navigation, review pre-checks and rule calibration and a status check. Ships in shadow mode: hooks log what they would do and never block or inject until you switch to active.",
-  "version": "0.2.0",
+  "description": "Small typed decisions from OpenJev (Codiv System One) for Claude Code: a rule-enforcing edit hook, an opt-in skill-pick hook, and skills for file discovery, browser navigation, review pre-checks, rule calibration, status and a plain-English log report. Runs on the hosted API, a local Verdict/Laya/OpenJev model, or an offline pattern mode. Ships in shadow mode: hooks log what they would do and never block or inject until you switch to active.",
+  "version": "0.3.0",
   "author": {
     "name": "Rcidshacker",
     "url": "https://github.com/Rcidshacker"
@@ -16,7 +16,10 @@
     "openjev",
     "codiv",
     "system-one",
-    "rules"
+    "rules",
+    "verdict",
+    "laya",
+    "local-models"
   ],
   "userConfig": {
     "api_key": {

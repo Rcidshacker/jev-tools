@@ -6,7 +6,7 @@
     {
       "name": "jev-tools",
       "source": "./",
-      "description": "OpenJev-backed rule enforcement, skill picking, file discovery, browser navigation and review pre-checks for Claude Code."
+      "description": "OpenJev-backed rule enforcement, skill picking, file discovery, browser navigation, review pre-checks and a plain-English log report for Claude Code. Hosted API, local model or offline."
     }
   ]
 }

@@ -17,6 +17,10 @@ from pathlib import Path
 
 HOST = "api.codiv.ai"
 MODEL = "openjev-latest"  # Codiv also accepts jev-latest as an alias
+# Small encoder models run locally by `jev-tools-setup`: (context tokens per question, max choice options). Each question
+# is read with its own copy of the state and the model cuts whatever does not fit from the END, so we shrink it ourselves.
+LIMITS = {"verdict-1.4": (512, 24), "laya-1.0": (1024, 20)}
+CHARS_PER_TOKEN = 3  # ponytail: rough and on the safe side for code/JSON; use the model's tokenizer if edge cases matter
 LOOPBACK = ("localhost", "127.0.0.1", "::1")
 
 
@@ -79,8 +83,76 @@ def score(instructions, levels):
     return {"type": "score", "instructions": instructions, "criteria": levels}
 
 
+def home():
+    """Where `jev-tools setup` keeps config.json and the credentials file."""
+    return Path.home() / ".jev-tools"
+
+
+def config():
+    """Choices made by `jev-tools setup`: {"backend": "api"|"local"|"offline", "base_url": ...}. {} if absent or broken."""
+    try:
+        c = json.loads((home() / "config.json").read_text(encoding="utf-8"))
+        return c if isinstance(c, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def backend():
+    b = config().get("backend")
+    return b if b in ("api", "local", "offline") else "api"
+
+
+def model():
+    """Model id sent in requests: a small local encoder only when setup chose one for the local backend."""
+    m = config().get("model")
+    return m if backend() == "local" and m in LIMITS else MODEL
+
+
+def max_options():
+    """Most choice options one question may carry on the active model (255 on OpenJev)."""
+    return LIMITS[model()][1] - 1 if model() in LIMITS else 255  # one slot is left for the caller's "none"
+
+
+def state_chars(question_chars=400):
+    """Characters of state that fit beside a typical question on a small model, or None when there is no tight limit."""
+    lim = LIMITS.get(model())
+    return max(200, (lim[0] - 30) * CHARS_PER_TOKEN - question_chars) if lim else None
+
+
+def fit(obj, chars):
+    """Shrink every string in a state to its head so the whole fits `chars`; unchanged when it already fits."""
+    n = len(json.dumps(obj, ensure_ascii=False))
+    if n <= chars:
+        return obj
+    ratio = chars / n
+
+    def cut(o):
+        if isinstance(o, str):
+            return o[:max(40, int(len(o) * ratio))]
+        if isinstance(o, dict):
+            return {k: cut(v) for k, v in o.items()}
+        return [cut(v) for v in o] if isinstance(o, list) else o
+
+    return cut(obj)
+
+
+def find_key():
+    """(key, source) from env, the plugin option, then the setup credentials file; (None, None) if none."""
+    for env, name in (("OPENJEV_API_KEY", "OPENJEV_API_KEY"), ("TYPESAFE_API_KEY", "TYPESAFE_API_KEY"),
+                      ("CLAUDE_PLUGIN_OPTION_API_KEY", "plugin api_key option")):
+        if os.environ.get(env):
+            return os.environ[env], name
+    try:
+        k = (home() / "credentials").read_text(encoding="utf-8").strip()
+    except OSError:
+        k = ""
+    return (k, "credentials file") if k else (None, None)
+
+
 def endpoint():
-    base = (os.environ.get("OPENJEV_BASE_URL") or os.environ.get("TYPESAFE_BASE_URL") or f"https://{HOST}").rstrip("/")
+    # the setup config may name a loopback server for the local backend; the host check below still applies to it
+    base = (os.environ.get("OPENJEV_BASE_URL") or os.environ.get("TYPESAFE_BASE_URL")
+            or (config().get("base_url") if backend() == "local" else None) or f"https://{HOST}").rstrip("/")
     base = base.removesuffix("/v1")
     u = urllib.parse.urlsplit(base)
     # Hooks run unattended, so an env-injected base URL must not be able to redirect the key.
@@ -102,22 +174,33 @@ def log(event, **kw):
 
 def ask(state, questions, timeout=8, **extra):
     """POST one System One request. Returns {question_id: answer} or None on any failure."""
-    key = (os.environ.get("OPENJEV_API_KEY") or os.environ.get("TYPESAFE_API_KEY")
-           or os.environ.get("CLAUDE_PLUGIN_OPTION_API_KEY"))
-    if not key:
+    kind = backend()
+    if kind == "offline":
+        log("offline")  # chosen in setup: callers take their no-model fallback; the log line shows the hook did run
+        return None
+    key, _ = find_key()
+    if not key and kind != "local":
         log("no_key")  # otherwise a missing key is indistinguishable from a healthy install
         return None
     if not questions:
         return None
     t0 = time.monotonic()
     try:
-        body = json.dumps({"model": MODEL, "state": scrub(state), "questions": scrub(questions), **extra}).encode()
-        req = urllib.request.Request(
-            endpoint(), body,
-            # explicit User-Agent: the default Python-urllib one is 403'd by the edge in front of the API
-            {"Authorization": f"Bearer {key}", "Content-Type": "application/json", "User-Agent": "jev-tools/0.1"},
-            method="POST",
-        )
+        mdl, state, questions = model(), scrub(state), scrub(questions)
+        if mdl in LIMITS:
+            if any(len(q.get("criteria") or ()) > LIMITS[mdl][1] for q in questions.values() if q.get("type") == "choice"):
+                log("too_many_options", model=mdl)  # cutting options would change the question, so decline instead
+                return None
+            q_chars = max(len(json.dumps(q, ensure_ascii=False)) for q in questions.values())
+            fitted = fit(state, state_chars(q_chars))
+            if fitted != state:
+                log("state_cut", model=mdl, chars=len(json.dumps(state, ensure_ascii=False)))
+            state = fitted
+        body = json.dumps({"model": mdl, "state": state, "questions": questions, **extra}).encode()
+        headers = {"Content-Type": "application/json", "User-Agent": "jev-tools/0.1"}  # explicit User-Agent: the default Python-urllib one is 403'd by the edge in front of the API
+        if key:
+            headers["Authorization"] = f"Bearer {key}"  # a self-hosted server may not need one
+        req = urllib.request.Request(endpoint(), body, headers, method="POST")
         with _OPEN.open(req, timeout=timeout) as r:
             data = json.load(r)
         log("ask", n=len(questions), ms=int((time.monotonic() - t0) * 1000), tok=(data.get("usage") or {}).get("input_tokens"))
@@ -129,7 +212,7 @@ def ask(state, questions, timeout=8, **extra):
 
 def mode():
     """shadow (default: log, never act) | active | off."""
-    m = (os.environ.get("JEV_MODE") or os.environ.get("CLAUDE_PLUGIN_OPTION_MODE") or "shadow").strip().lower()
+    m = (os.environ.get("JEV_MODE") or os.environ.get("CLAUDE_PLUGIN_OPTION_MODE") or config().get("mode") or "shadow").strip().lower()
     return m if m in ("shadow", "active", "off") else "shadow"
 
 

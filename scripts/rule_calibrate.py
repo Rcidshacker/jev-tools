@@ -13,7 +13,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from jevlib import ask, noul, sensitive_path  # noqa: E402
+from jevlib import ask, backend, noul, sensitive_path  # noqa: E402
 from rule_enforcer import MAX_DIFF, SKIP_EXT, THRESH, extract_rules, rule_files  # noqa: E402
 
 MIN_HUNKS = 5
@@ -48,6 +48,8 @@ def main():
     ap.add_argument("--commits", type=int, default=15)
     ap.add_argument("--hunks", type=int, default=30)
     a = ap.parse_args()
+    if backend() == "offline":
+        sys.exit("rule-calibrate needs a model: re-run `jev-tools-setup` and choose api or local. Offline mode cannot judge hunks.")
     rules = extract_rules(rule_files(Path.cwd() / "x", Path.cwd()))
     changes = hunks(a.commits, a.hunks)
     if not rules or not changes:
@@ -60,6 +62,8 @@ def main():
 
     with ThreadPoolExecutor(4) as ex:
         rows = [r for r in ex.map(one, changes) if r]
+    if not rows:
+        sys.exit("no hunk could be judged: the model did not answer. Run the status skill to see why.")
     print(f"{len(rows)} of {len(changes)} hunks judged against {len(rules)} rules (fire level {THRESH})\n")
     stats = []
     for i, (text, _) in enumerate(rules):

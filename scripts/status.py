@@ -11,7 +11,10 @@ from collections import Counter
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from jevlib import mode  # noqa: E402
+from jevlib import LIMITS, backend, find_key, mode, model  # noqa: E402
+
+BACKENDS = {"api": "hosted api.codiv.ai", "local": "self-hosted model on this machine",
+            "offline": "no model: keyword/pattern fallbacks only; rule-calibrate unavailable"}
 
 
 def log_path():
@@ -20,15 +23,23 @@ def log_path():
 
 
 def main():
-    key = ("OPENJEV_API_KEY" if os.environ.get("OPENJEV_API_KEY") else "TYPESAFE_API_KEY" if os.environ.get("TYPESAFE_API_KEY")
-           else "plugin api_key option" if os.environ.get("CLAUDE_PLUGIN_OPTION_API_KEY") else None)
+    _, key = find_key()
+    kind = backend()
     picker = (os.environ.get("JEV_SKILL_PICKER") or os.environ.get("CLAUDE_PLUGIN_OPTION_SKILL_PICKER") or "").lower() in ("1", "true", "yes", "on")
     print(f"python      {sys.version.split()[0]}")
-    print(f"api key     {'found via ' + key if key else 'MISSING: every hook silently does nothing'}")
+    print(f"backend     {kind}  ({BACKENDS[kind]})")
+    if kind == "local":
+        small = model() in LIMITS
+        print(f"model       {model()}" + (f"  (small encoder: {LIMITS[model()][0]}-token context, long inputs are trimmed, run rule-calibrate before active)" if small else ""))
+    if kind == "api":
+        print(f"api key     {'found via ' + key if key else 'MISSING: every hook silently does nothing'}")
+    elif kind == "local":
+        print(f"api key     {'found via ' + key if key else 'none (a self-hosted server may not need one)'}")
     print(f"mode        {mode()}  (shadow = log only, active = block/inject, off = nothing sent)")
     print(f"skill hook  {'on' if picker else 'off (opt-in: it sends every prompt)'}")
     p = log_path()
     print(f"log         {p}")
+    print("full report run the report skill (or `jev-tools-setup report`): plain-English LOG.md with problems and fixes")
     if not p.exists():
         print("            no log yet: no hook has run since install, or none could write here")
         return 1

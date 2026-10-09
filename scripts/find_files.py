@@ -14,12 +14,18 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from jevlib import ask, score, sensitive_path  # noqa: E402
+from jevlib import ask, backend, score, sensitive_path, state_chars  # noqa: E402
 
 SKIP = {".git", "node_modules", ".venv", "venv", "__pycache__", "dist", "build", ".next", "target", ".idea"}
 STOP = set("the and for with that this from into how what where which does about file files code find show all any are was you your get its why who when not".split())
 POOL, WIDE, FINALISTS = 100, 20, 10  # candidates, files per stage-1 request, files re-judged in stage 2
 WIDE_CHARS, DEEP_CHARS = 700, 2500
+_room = state_chars()
+if _room:  # a small local model cuts the state at its token limit, so send fewer files per request, each shorter
+    DEEP_CHARS = min(DEEP_CHARS, max(300, _room // 2))
+    WIDE_CHARS = min(WIDE_CHARS, DEEP_CHARS)
+    WIDE = max(1, _room // (WIDE_CHARS + 80))
+    FINALISTS = max(1, _room // (DEEP_CHARS + 80))
 LEVELS = ["irrelevant", "weakly related", "related", "relevant", "essential to the query"]
 Q1 = "How relevant is file {} to the query?"
 Q2 = "How much is file {} the place where the thing the query asks about is implemented or defined?"
@@ -110,8 +116,9 @@ def main():
         return 1
     scores = rank(a.query, cands, kws)
     if scores is None:
-        print("Jev unavailable: keyword order only", file=sys.stderr)
-        scores = {str(p): float(n) for n, p, _ in cands}
+        print(("no model (offline)" if backend() == "offline" else "Jev unavailable") + ": keyword order only", file=sys.stderr)
+        top = max(n for n, _, _ in cands)
+        scores = {str(p): n * 100 / top for n, p, _ in cands}  # percent of the best keyword score, like the model's 0-100
     for path, s in sorted(scores.items(), key=lambda kv: -kv[1])[: a.top]:
         print(f"{s:5.0f}  {path}")
     return 0
