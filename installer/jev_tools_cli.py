@@ -105,7 +105,7 @@ def save_config(**cfg):
     return p
 
 
-def probe(base, key):
+def probe(base, key, model="openjev-latest"):
     """One tiny System One call. Returns None on success or a short reason. Never follows redirects, never prints the key."""
     u = urllib.parse.urlsplit(base)
     if not (u.hostname in LOOPBACK or (u.hostname == HOST and u.scheme == "https")):
@@ -115,7 +115,7 @@ def probe(base, key):
         def redirect_request(self, *a, **k):
             return None
 
-    body = json.dumps({"model": "openjev-latest", "state": "The build finished and all tests passed.",
+    body = json.dumps({"model": model, "state": "The build finished and all tests passed.",
                        "questions": {"ok": {"type": "noul", "instructions": "The text reports a successful outcome"}}}).encode()
     headers = {"Content-Type": "application/json", "User-Agent": "jev-tools/0.1"}
     if key:
@@ -295,7 +295,7 @@ def _setup(a):
                 print(f"! Docker not found. Install it, then: {SELF_HOST_CMD}\n  Guide: {SELF_HOST_DOCS}")
                 return 1
             print(f"\nStart the server if it is not running:\n  {SELF_HOST_CMD}\nChecking {cfg['base_url']} ...")
-            err = probe(cfg["base_url"], None)
+            err = probe(cfg["base_url"], None, model)
             print("  ok  server answers" if not err else f"! not answering yet ({err}). Config is saved; start the server, then run the `status` skill.")
     else:
         print(f"\n{OFFLINE_NOTE}")
@@ -376,7 +376,7 @@ def checks():
     add("ok" if shutil.which("docker") else "info", "docker for local mode", shutil.which("docker") or "not found (only needed for local)")
     saved = read_config()
     if saved.get("backend") == "local":
-        err = probe(saved.get("base_url") or LOCAL_URL, None)
+        err = probe(saved.get("base_url") or LOCAL_URL, None, saved.get("model") or "openjev-latest")  # a Verdict-only server rejects other model names
         add("ok" if not err else "warn", "local server", f"{saved.get('model')} at {saved.get('base_url')}" + ("" if not err else f": {err}"),
             "" if not err else "start it with `jev-tools-setup serve` (small models) or docker compose (full model)")
     cfg = home() / "config.json"
@@ -399,6 +399,8 @@ def check(_):
 
 
 def main(argv=None):
+    if hasattr(sys.stdout, "reconfigure"):  # keep our lines in order with pip's streamed output when stdout is a file or pipe
+        sys.stdout.reconfigure(line_buffering=True)
     argv = list(sys.argv[1:] if argv is None else argv)
     if not argv or argv[0] not in ("setup", "check", "serve", "report", "uninstall", "-h", "--help"):
         argv.insert(0, "setup")  # bare `jev-tools-setup` means setup

@@ -69,7 +69,7 @@ Then give it a key (or a local server) yourself, see [Reference](#-reference). T
 | **Best for** | Best accuracy, zero setup beyond a key | Privacy, no key, no quota | Plugin installed but nothing sent anywhere |
 | **Needs** | A free [Codiv key](https://codiv.ai/dashboard) (100M input tokens) | Verdict/Laya: any CPU or GPU. Full OpenJev: NVIDIA Blackwell-class GPU + Docker | Nothing |
 | **Leaves your machine** | Diffs, prompts, rules (see [Privacy](#-privacy-what-leaves-your-machine)) | Nothing (weights download once from Hugging Face) | Nothing |
-| **Model quality** | Full OpenJev (all measurements below) | Verdict and Laya are **small and unmeasured here** | n/a |
+| **Model quality** | Full OpenJev (all measurements below) | Verdict and Laya are **small**: they only judge what they proved able to (see [measured](#-measured-on-real-small-models)) | n/a |
 
 <details>
 <summary><b>api</b>: paste a key, it is checked and stored safely</summary>
@@ -95,10 +95,17 @@ For Verdict/Laya, setup shows the plan and the download size, waits for your **y
 jev-tools-setup serve        # add --device cpu to force the CPU
 ```
 
-**What changes with a small model.** Each question is read with its own copy of the state, cut from the end at the model's window. jev-tools therefore trims long diffs and file excerpts to fit, sends fewer files per `find-files` request, caps option lists (23 for Verdict, 19 for Laya, so `browser-nav` sees fewer elements) and declines a question it cannot shrink. `review-precheck` will mostly say "full review" because its diff is usually cut. **All thresholds and measurements come from the full OpenJev model**, so keep small models in `shadow` and run the `rule-calibrate` skill before switching to `active`.
+**What changes with a small model.** Each question is read with its own copy of the state, cut from the end at the model's window (512 / 1,024 tokens). jev-tools trims long inputs to fit, caps option lists (23 for Verdict, 19 for Laya) and declines a question it cannot shrink. Local servers get **one request at a time**: they are CPU/GPU bound, and parallel requests only queue and time out.
+
+**The plugin only asks a small model what it proved able to judge** (live runs below). Everything else automatically uses the same pattern fallbacks as `offline`, and `status` and `LOG.md` say so:
+
+| | Asks the model | Uses pattern fallbacks |
+|---|---|---|
+| **Verdict** | skill hook | rule hook, `review-precheck`, `find-files`, `browser-nav` |
+| **Laya** | skill hook, `browser-nav` | rule hook, `review-precheck`, `find-files` |
 
 > [!NOTE]
-> The small-model install follows OpenJev's documented steps but is new in 0.3.0 and has not been measured on real projects yet.
+> The small-model install was run for real on Windows (the PyPI package, CPU-only PyTorch, weights from the Hugging Face cache). The numbers below are small samples on one machine; thresholds are still the ones tuned on the full model.
 
 </details>
 
@@ -270,7 +277,28 @@ All reproducible from the scripts; method and caveats in [MEASUREMENTS.md](https
 | File discovery | **no better than plain keyword counting** on 8 labelled queries (top-3 hits 4 to 6 of 8 vs 4 of 8); repeat runs differ by up to 2 |
 | Cost and speed | about 1 s per prompt or edit, 2 s when a violation is confirmed; about 5k input tokens per edit at 20 rules |
 
-Not measured: the small local models (Verdict, Laya) and the offline fallbacks on real projects.
+Not measured on real projects: the offline fallbacks. The small local models are measured in the next section.
+
+</details>
+
+<details id="-measured-on-real-small-models">
+<summary><b>Measured on real small models</b> (Verdict 151M and Laya 421M, CPU, one Windows laptop)</summary>
+
+Run against live local servers installed by `jev-tools-setup`, with the real scripts. Tiny samples (2 to 8 cases each), so read them as "can it do this at all", not as accuracy figures.
+
+| Task | Verdict 151M | Laya 421M |
+|---|---|---|
+| Plain topical choice (invoice / ticket / incident / other) | 4 of 4 | 4 of 4 |
+| Skill picking (3 cases) | **3 of 3** through the model | picks were right, but their scores sat under the 0.6 bar tuned on OpenJev (0.47; the second was vetoed), so nothing is injected |
+| `browser-nav` (2 steps) | 1 of 2 right, both under the confidence floor | **2 of 2** at 0.88 and 0.94 |
+| Rule check, violation vs clean edit (6 cases) | scores flat near 0.65 for everything: mean gap about 0, 3 of 6 at chance | violations scored 0.39 to 0.55 vs 0.16 to 0.29 clean: a gap, but under the 0.8 block line |
+| `review-precheck` | flagged all 7 policy questions even on a rename | flagged 3 of 7 on a rename, 7 of 7 on the risky diff |
+| `find-files` (8 labelled queries, top 3) | 0 of 8, about 7 s per query | 0 of 8, about 56 s per query |
+| Latency, 16 questions | about 0.55 s | about 1.5 s |
+
+Plain keyword counting got 2 of 8 on the same queries, which is why the plugin does not ask either model to rank files. With the pattern fallbacks, on the same cases: the rule hook blocked the planted `console.log` edit and allowed all clean edits (it cannot catch a rule with no literal token, such as "never commit secrets"), and `review-precheck` called the benign rename *fast* and the risky diff *full* with the right flags.
+
+Takeaways: both models classify topics well; neither is a drop-in for the full model on code judgments; Laya is the better of the two but slower on CPU; run `rule-calibrate` before trusting any rule verdict from a small model.
 
 </details>
 

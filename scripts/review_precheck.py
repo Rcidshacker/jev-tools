@@ -13,11 +13,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from jevlib import SECRET, ask, backend, log, noul, state_chars  # noqa: E402
+from jevlib import SECRET, ask, backend, log, model, no_model, noul  # noqa: E402
 
 POLICY = Path(__file__).with_name("review_policy.json")
 MIN_P = float(os.environ.get("JEV_PRECHECK_MIN", "0.25"))
-MAX_DIFF = min(30000, state_chars() or 30000)  # a small local model reads far less; a cut diff routes to full review
+MAX_DIFF = 30000
 DOCS = (".md", ".txt", ".rst")
 
 
@@ -100,10 +100,10 @@ def main():
     if files and all(f.lower().endswith(DOCS) for f in files):
         print(json.dumps({"route": "fast", "flags": [], "note": "docs only"}))
         return 0
-    if backend() == "offline":  # chosen in setup: patterns only, and "fast" only for a small clean diff
+    if no_model("precheck"):  # offline by choice, or a small model that cannot judge diffs: patterns only, "fast" only for a small clean diff
         decision, flags = route_offline(r.stdout)
         log("precheck", route=decision, flags=len(flags), offline=True)
-        print(json.dumps({"route": decision, "flags": flags, "note": "offline: pattern checks only, risky logic is not assessed"}, indent=2))
+        print(json.dumps({"route": decision, "flags": flags, "note": f"{'offline' if backend() == 'offline' else model() + ' cannot judge diffs'}: pattern checks only, risky logic is not assessed"}, indent=2))
         return 0 if decision == "fast" else 10
     policy = json.loads(POLICY.read_text(encoding="utf-8"))
     diff = r.stdout[:MAX_DIFF]

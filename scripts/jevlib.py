@@ -20,6 +20,12 @@ MODEL = "openjev-latest"  # Codiv also accepts jev-latest as an alias
 # Small encoder models run locally by `jev-tools-setup`: (context tokens per question, max choice options). Each question
 # is read with its own copy of the state and the model cuts whatever does not fit from the END, so we shrink it ourselves.
 LIMITS = {"verdict-1.4": (512, 24), "laya-1.0": (1024, 20)}
+# What each small model is trusted to judge, from live CPU runs on this project's own tasks (README has the table). Features:
+# skills, nav = choice questions; rules, precheck = yes/no on diffs; files = relevance scores. Models not listed are trusted for all.
+#   verdict-1.4: yes/no and scores did not separate violations from clean edits (gap about 0); skill picks 3/3.
+#   laya-1.0: browser-nav 2/2 and skill picks right, but rule scores stay under the 0.8 block line (0.39 and 0.48 on real
+#   violations), benign diffs get over-flagged, and find-files scored 0/8 vs 2/8 for keywords at 56 s per query.
+TRUSTED = {"verdict-1.4": {"skills"}, "laya-1.0": {"skills", "nav"}}
 CHARS_PER_TOKEN = 3  # ponytail: rough and on the safe side for code/JSON; use the model's tokenizer if edge cases matter
 LOOPBACK = ("localhost", "127.0.0.1", "::1")
 
@@ -134,6 +140,16 @@ def fit(obj, chars):
         return [cut(v) for v in o] if isinstance(o, list) else o
 
     return cut(obj)
+
+
+def no_model(feature):
+    """True when a feature must use its pattern fallback: the offline backend, or a model measured as unable to judge it."""
+    return backend() == "offline" or (model() in TRUSTED and feature not in TRUSTED[model()])
+
+
+def workers(n=5):
+    """Client threads for fan-out calls. A local server is CPU/GPU bound, so extra threads only queue behind each other and time out."""
+    return 1 if backend() == "local" else n
 
 
 def find_key():

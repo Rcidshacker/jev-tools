@@ -301,6 +301,73 @@ class SmallModels(unittest.TestCase):
         self.assertIn("rule-calibrate", r.stdout)
 
 
+class Trust(unittest.TestCase):
+    """verdict-1.4 only routes skills; everything it measurably cannot judge uses the pattern fallbacks."""
+    def setUp(self):
+        import jevlib
+        self.jl, self.home = jevlib, jevlib.home()
+        shutil.rmtree(self.home, ignore_errors=True)
+        self.home.mkdir(parents=True)
+        self.proj = TMP / "trustproj"
+        shutil.rmtree(self.proj, ignore_errors=True)
+        (self.proj / "src").mkdir(parents=True)
+        (self.proj / "CLAUDE.md").write_text("# Rules\n- Never use console.log in source files\n")
+
+    def tearDown(self):
+        shutil.rmtree(self.home, ignore_errors=True)
+
+    def use(self, model, backend="local"):
+        (self.home / "config.json").write_text(json.dumps({"backend": backend, "model": model}))
+
+    def test_no_model_and_workers(self):
+        self.assertFalse(self.jl.no_model("rules"))  # api / OpenJev: trusted for everything
+        self.assertEqual(self.jl.workers(), 5)
+        feats = ("skills", "nav", "rules", "precheck", "files")
+        self.use("verdict-1.4")
+        self.assertEqual([self.jl.no_model(f) for f in feats], [False, True, True, True, True])
+        self.assertEqual((self.jl.workers(), self.jl.workers(4)), (1, 1))  # one thread against a local server
+        self.use("laya-1.0")
+        self.assertEqual([self.jl.no_model(f) for f in feats], [False, False, True, True, True])
+        self.use("openjev-latest")
+        self.assertEqual([self.jl.no_model(f) for f in feats], [False] * 5)
+        self.use("x", backend="offline")
+        self.assertTrue(self.jl.no_model("skills"))
+
+    def test_verdict_rule_hook_uses_the_literal_check_and_makes_no_call(self):
+        self.use("verdict-1.4")
+        reset(lambda b: {})
+        ti = {"file_path": str(self.proj / "src/a.js"), "old_string": "return 1", "new_string": "console.log(1); return 1"}
+        out = json.loads(run("rule_enforcer.py", stdin=json.dumps({"tool_name": "Edit", "tool_input": ti, "cwd": str(self.proj)}), JEV_MODE="active").stdout)
+        self.assertEqual(out["hookSpecificOutput"]["permissionDecision"], "deny")
+        self.assertEqual(Mock.calls, [])
+
+    def test_verdict_still_routes_skills_with_the_model(self):
+        self.use("verdict-1.4")
+        d = self.proj / ".claude" / "skills" / "pdf-tool"
+        d.mkdir(parents=True)
+        (d / "SKILL.md").write_text("---\nname: pdf-tool\ndescription: Merge, split and rotate PDF files\n---\nbody\n")
+        reset(lambda b: {"skill": choice_a("pdf-tool", 0.9)} if "skill" in b["questions"] else {"needed": noul_a(0.9), "right": noul_a(0.9)})
+        out = run("skill_picker.py", stdin=json.dumps({"prompt": "please merge these two pdf files into one", "cwd": str(self.proj)}), JEV_MODE="active", JEV_SKILL_PICKER="1")
+        self.assertIn("pdf-tool", out.stdout)
+        self.assertTrue(Mock.calls and Mock.calls[0]["model"] == "verdict-1.4")
+
+    def test_verdict_precheck_and_nav_use_patterns(self):
+        self.use("verdict-1.4")
+        reset(lambda b: {})
+        els = [{"ref": "ref_1", "role": "link", "name": "Home"}, {"ref": "ref_2", "role": "button", "name": "Settings"}]
+        out = json.loads(run("pick_next.py", stdin=json.dumps({"goal": "open the settings", "elements": els})).stdout)
+        self.assertEqual((out["action"], out["ref"]), ("unsure", "ref_2"))
+        self.assertEqual(Mock.calls, [])
+
+    def test_laya_still_drives_browser_nav_with_the_model(self):
+        self.use("laya-1.0")
+        reset(lambda b: {"next": choice_a("ref_2", 0.9), "goal_met": noul_a(0.05), "stuck": noul_a(0.05)})
+        els = [{"ref": "ref_1", "role": "link", "name": "Home"}, {"ref": "ref_2", "role": "button", "name": "Settings"}]
+        out = json.loads(run("pick_next.py", stdin=json.dumps({"goal": "open the settings", "elements": els})).stdout)
+        self.assertEqual((out["action"], out["ref"]), ("click", "ref_2"))
+        self.assertEqual(Mock.calls[0]["model"], "laya-1.0")
+
+
 class Installer(unittest.TestCase):
     KEY = "sk-" "codiv-TestKeyTestKeyTestKey0123456789"
 
@@ -363,6 +430,13 @@ class Installer(unittest.TestCase):
             self.assertEqual(self.setup("--backend", "local", "--model", "openjev-latest", "--base-url", url), 0)
         self.assertEqual(json.loads((self.home / "config.json").read_text())["base_url"], url)
         self.assertIn("server answers", self.out.getvalue())
+
+    def test_probe_asks_with_the_configured_model(self):
+        reset(lambda b: {"ok": noul_a(0.99)})
+        self.assertIsNone(self.cli.probe(os.environ["OPENJEV_BASE_URL"], None, "verdict-1.4"))
+        self.assertEqual(Mock.calls[-1]["model"], "verdict-1.4")
+        self.assertIsNone(self.cli.probe(os.environ["OPENJEV_BASE_URL"], None))
+        self.assertEqual(Mock.calls[-1]["model"], "openjev-latest")
 
     def test_probe_refuses_foreign_hosts(self):
         reset(lambda b: {"ok": noul_a(0.99)})
@@ -863,18 +937,18 @@ class FindFiles(unittest.TestCase):
         # 45 candidates -> stage 1 in requests of 20 + 20 + 5, then the 10 best re-judged; unrelated.py never sent
         self.assertEqual(sorted(len(c["questions"]) for c in Mock.calls), [5, 10, 20, 20])
 
-    def test_small_local_model_gets_small_requests(self):
+    def test_small_local_models_do_not_rank_files(self):
         home = Path(os.environ["HOME"]) / ".jev-tools"
         home.mkdir(parents=True, exist_ok=True)
-        (home / "config.json").write_text(json.dumps({"backend": "local", "model": "verdict-1.4"}))
         try:
-            reset(lambda b: {k: score_a(2.0) for k in b["questions"]})
-            r = run("find_files.py", "login token handling", "--root", str(self.root), "--top", "3")
+            for model in ("verdict-1.4", "laya-1.0"):  # both scored below plain keywords on a labelled set, so neither is asked
+                (home / "config.json").write_text(json.dumps({"backend": "local", "model": model}))
+                reset(lambda b: {k: score_a(2.0) for k in b["questions"]})
+                r = run("find_files.py", "login token handling", "--root", str(self.root), "--top", "2")
+                self.assertEqual((r.returncode, len(r.stdout.splitlines()), Mock.calls), (0, 2, []), model)
+                self.assertIn("no better than keywords", r.stderr)
         finally:
             shutil.rmtree(home, ignore_errors=True)
-        self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertTrue(all(c["model"] == "verdict-1.4" and len(c["questions"]) <= 2 for c in Mock.calls))
-        self.assertTrue(all(len(json.dumps(c["state"])) < 1300 for c in Mock.calls))  # 512-token window, not 20 files x 700 chars
 
     def test_falls_back_to_keyword_order(self):
         reset(lambda b: 1 / 0)

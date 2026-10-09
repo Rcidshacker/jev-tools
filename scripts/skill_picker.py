@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from jevlib import ask, backend, choice, hook_in, log, mode, noul  # noqa: E402
+from jevlib import ask, choice, hook_in, log, mode, no_model, noul  # noqa: E402
 
 MIN_P = float(os.environ.get("JEV_SKILL_MIN", "0.6"))
 TOP = 40  # the shortlist sent to Jev; a choice question allows 255 but the prompt is cheaper when small
@@ -74,7 +74,7 @@ def main():
     if len(prompt) < 15 or prompt.startswith("/"):
         return
     skills = roster(ev.get("cwd") or ".")
-    if backend() == "offline":
+    if no_model("skills"):
         ask({}, {})  # logs the skip, so `status` can see the hook ran
         pick = keyword_pick(prompt, skills)
         shadow = mode() != "active"

@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Measured the small local models for real (installer run end to end with the PyPI package; Verdict and Laya servers on CPU) and acted on it: `jevlib.TRUSTED` limits each small model to what it proved able to judge. Verdict is only asked for skill picking; Laya for skill picking and `browser-nav`. The rule hook, `review-precheck`, `find-files` (and Verdict's `browser-nav`) use the pattern fallbacks instead. Details and numbers in the README.
+- Local servers get one client request at a time: parallel requests queued behind a CPU-bound server and caused mass timeouts.
+- Fixed: `jev-tools-setup check` reported "HTTP 400" for a healthy Verdict/Laya server because its probe always asked for `openjev-latest`; it now probes with the configured model.
+- Removed the now-unused small-model sizing code from `find-files` and `review-precheck`.
+
 ## 0.3.0
 
 - New one-command installer (`uv tool install jev-tools-setup`, then `jev-tools-setup`; also `pipx install` or `uvx jev-tools-setup`. The bare `jev-tools` name on PyPI belongs to an unrelated project, so this package is `jev-tools-setup`): installs the plugin through the `claude` CLI and asks how Jev should run: hosted `api`, self-hosted `local` (GPU and Docker checked first), or `offline` (no model, documented fallbacks).

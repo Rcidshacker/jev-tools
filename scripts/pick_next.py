@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from jevlib import ask, backend, choice, hook_in, max_options, noul  # noqa: E402
+from jevlib import ask, choice, hook_in, max_options, no_model, noul  # noqa: E402
 
 ACT = 0.8
 FLOOR = 0.65  # hermes-jev-skills measured wrong picks at 0.45-0.60 and right ones above 0.74
@@ -51,7 +51,7 @@ def main():
     if not req.get("goal") or not els:
         print(json.dumps({"action": "error", "why": "need goal and elements"}))
         return 1
-    if backend() == "offline":
+    if no_model("nav"):
         ask({}, {})  # logs the skip, so `status` can see the script ran
         ref = keyword_guess(req["goal"], els, req.get("history") or [])
         if ref:  # p 0 and "unsure": Claude still chooses, this is only a hint

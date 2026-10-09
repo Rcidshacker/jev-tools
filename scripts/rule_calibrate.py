@@ -13,7 +13,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from jevlib import ask, backend, noul, sensitive_path  # noqa: E402
+from jevlib import ask, backend, noul, sensitive_path, workers  # noqa: E402
 from rule_enforcer import MAX_DIFF, SKIP_EXT, THRESH, extract_rules, rule_files  # noqa: E402
 
 MIN_HUNKS = 5
@@ -60,7 +60,7 @@ def main():
         ans = ask(f"File: {c[0]}\n\n{c[1]}", qs, timeout=30)
         return [ans[f"r{i}"]["noul"] for i in range(len(rules))] if ans else None
 
-    with ThreadPoolExecutor(4) as ex:
+    with ThreadPoolExecutor(workers(4)) as ex:
         rows = [r for r in ex.map(one, changes) if r]
     if not rows:
         sys.exit("no hunk could be judged: the model did not answer. Run the status skill to see why.")

@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from jevlib import ask, backend, hook_in, log, mode, noul, sensitive_path  # noqa: E402
+from jevlib import ask, hook_in, log, mode, no_model, noul, sensitive_path  # noqa: E402
 
 THRESH = float(os.environ.get("JEV_THRESHOLD", "0.80"))
 CONFIRM = float(os.environ.get("JEV_CONFIRM", "0.70"))
@@ -112,7 +112,7 @@ def main():
     rules = extract_rules(rule_files(path, Path(ev.get("cwd") or ".")))
     if not rules:
         return
-    if backend() == "offline":
+    if no_model("rules"):
         ask({}, {})  # logs the skip, so `status` can see the hook ran
         hits = offline_hits(rules, diff)
         log("rule_check", file=path.name, rules=len(rules), offline=True, hits=len(hits), rule=hits[0][1][:80] if hits else "", enforce=ENFORCE)
