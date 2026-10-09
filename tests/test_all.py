@@ -694,7 +694,7 @@ class Check(unittest.TestCase):
             if "nvidia-smi" in cmd[0]:
                 return 1, ""
             return 0, py
-        which = lambda n: {"python": "/bin/python", "claude": claude, "git": "/bin/git"}.get(n)
+        which = lambda n, path=None: {"python": "/bin/python", "claude": claude, "git": "/bin/git"}.get(n)
         with mock.patch.object(self.cli, "run_out", run_out), mock.patch.object(self.cli.shutil, "which", which), \
                 mock.patch.object(self.cli.socket, "create_connection", return_value=mock.Mock()):
             return {name: (level, detail) for level, name, detail, _ in self.cli.checks()}
@@ -710,7 +710,7 @@ class Check(unittest.TestCase):
 
     def test_missing_claude_fails_but_missing_git_only_warns(self):
         self.assertEqual(self.report(claude=None)["claude CLI"][0], "fail")
-        with mock.patch.object(self.cli.shutil, "which", lambda n: None), \
+        with mock.patch.object(self.cli.shutil, "which", lambda n, path=None: None), \
                 mock.patch.object(self.cli.socket, "create_connection", side_effect=OSError("down")):
             rows = {n: lvl for lvl, n, _, _ in self.cli.checks()}
         self.assertEqual((rows["git"], rows["network to api.codiv.ai"]), ("warn", "warn"))
@@ -726,6 +726,17 @@ class Check(unittest.TestCase):
         self.assertIn("install Claude Code", out.getvalue())
         with mock.patch.object(self.cli, "checks", return_value=[("ok", "x", "y", "")]), contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(self.cli.check(None), 0)
+
+    def test_python_lookup_skips_the_tools_own_venv(self):
+        venv_bin, system_bin = "/uvtool/venv/bin", "/usr/bin"
+        seen = {}
+
+        def which(name, path=None):
+            seen["path"] = path
+            return "/usr/bin/python"
+        with mock.patch.dict(os.environ, {"PATH": os.pathsep.join([venv_bin, system_bin])}),                 mock.patch.object(self.cli.sys, "prefix", "/uvtool/venv"), mock.patch.object(self.cli.sys, "base_prefix", "/usr"),                 mock.patch.object(self.cli.Path, "resolve", lambda self_: self_), mock.patch.object(self.cli.shutil, "which", which):
+            self.assertEqual(self.cli.system_python(), "/usr/bin/python")
+        self.assertEqual(seen["path"], system_bin)
 
     def test_jev_mode_env_is_flagged(self):
         with mock.patch.dict(os.environ, {"JEV_MODE": "off"}):

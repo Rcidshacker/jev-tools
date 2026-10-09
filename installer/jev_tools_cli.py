@@ -327,12 +327,21 @@ def uninstall(_):
     return 0
 
 
+def system_python():
+    """The `python` the hooks will get. Under uvx/pipx the tool's own venv is first on PATH, so skip it."""
+    dirs = os.environ.get("PATH", "").split(os.pathsep)
+    if sys.prefix != sys.base_prefix:
+        own = str(Path(sys.prefix).resolve())
+        dirs = [d for d in dirs if d and not str(Path(d).resolve()).startswith(own)]
+    return shutil.which("python", path=os.pathsep.join(dirs))
+
+
 def checks():
     """Read-only prerequisite report: list of (level, name, detail, hint), level in ok|warn|fail|info. Sends and changes nothing."""
     out = []
     add = lambda level, name, detail, hint="": out.append((level, name, detail, hint))
     # the hooks run the literal command `python`, so it must resolve to 3.10+ (on Windows the Store stub resolves but does not run)
-    py = shutil.which("python")
+    py = system_python()
     rc, ver = run_out([py, "-c", "import sys;print('%d.%d' % sys.version_info[:2])"]) if py else (1, "")
     try:
         ok = rc == 0 and tuple(int(x) for x in ver.split(".")) >= (3, 10)
